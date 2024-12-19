@@ -28,7 +28,7 @@ def question_recommendations(history, LLM):
 
     recommendation_prompt_template = f"""
     Task: 
-    Given a conversation between the user and assistant, generate 3 user queries that follow the flow of the conversation. The questions should be related to popular tags that the current user hasn't explored yet. If a user's current conversation has certain tags, recommend questions related to tags that might co-occur with them.
+    Given a conversation between the user and assistant, generate 3 user queries that follow the flow of the conversation. The questions should be related to tags that the co-occur with them.
     
     Conversation History:
     {conversation_history}
@@ -39,6 +39,7 @@ def question_recommendations(history, LLM):
     Instructions:
     1. Focus on questions that could summarize or represent the essence of the conversation and deep dive into it.
     2. Generate exactly three questions
+    3. Keep the question concise and short as would a human-generated anecdote question.
     3. Return the questions as a numbered list in the following format:
             [First question]
             [Second question]

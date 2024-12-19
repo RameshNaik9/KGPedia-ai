@@ -89,7 +89,6 @@ class QueryFusionRetriever(BaseRetriever):
         )
         response = self._llm.complete(prompt_str)
 
-    
         queries = response.text.split("\n")
         queries = [q.strip() for q in queries if q.strip()]
         if self._verbose:
