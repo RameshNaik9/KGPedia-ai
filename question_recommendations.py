@@ -28,23 +28,24 @@ def question_recommendations(history, LLM):
 
     recommendation_prompt_template = f"""
     Task: 
-    Given a conversation between the user and assistant, generate 3 user queries that follow the flow of the conversation. The questions should be related to tags that the co-occur with them.
-    
+    Given a conversation between the user and assistant, generate 3 follow-up questions that are relevant and answerable based on the available information. The questions should encourage further exploration without requiring highly detailed knowledge.    
     Conversation History:
     {conversation_history}
 
     Tags:
     {tags}
 
+    Note: The assistant has knowledge about general career guidance but may not have access to specific or granular details.
+
     Instructions:
-    1. Focus on questions that could summarize or represent the essence of the conversation and deep dive into it.
-    2. Generate exactly three questions
-    3. Keep the question concise and short as would a human-generated anecdote question.
-    3. Return the questions as a numbered list in the following format:
-            [First question]
-            [Second question]
-            [Third question]
-    4. Ensure each question is clear, concise, and directly related to the conversation or unexplored tags.
+    1. Generate questions that expand on the main topics discussed.
+    2. Avoid overly detailed or niche questions that may be unanswerable.
+    3. Ensure each question is clear, concise, and within the scope of the assistant's knowledge.
+    4. Generate exactly three questions.
+    5. Return the questions as a numbered list in the following format:
+        1. First question
+        2. Second question
+        3. Third question
     5. Do not include any additional text, explanations, or punctuation marks outside of the numbered list.
     
     Output Format Example:

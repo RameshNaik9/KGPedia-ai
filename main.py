@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from llama_index.core.bridge.pydantic import BaseModel
 from llama_index.core.memory import ChatMemoryBuffer
-from llama_index.postprocessor.colbert_rerank import ColbertRerank
+# from llama_index.postprocessor.colbert_rerank import ColbertRerank
 from typing import Optional, AsyncGenerator
 
 #Custom functions
@@ -11,7 +11,7 @@ from template import Template
 from chat_title import get_chat_name
 from kgpedia import KGPediaModel
 from utils import measure_time
-from tags import get_tags 
+# from tags import get_tags 
 from question_recommendations import question_recommendations
 # from cache import NodeCache
 
@@ -59,12 +59,12 @@ chat_sessions = {}
 # chat_profiles = ['Academics','Bhaat','Career','Gymkhana']
 chat_profiles = ['Career']
 
-# ColBERT Reranker setup
-colbert_reranker = ColbertRerank(
-    top_n=3,model="colbert-ir/colbertv2.0",
-    tokenizer="colbert-ir/colbertv2.0",
-    keep_retrieval_score=True
-)
+# # ColBERT Reranker setup
+# colbert_reranker = ColbertRerank(
+#     top_n=3,model="colbert-ir/colbertv2.0",
+#     tokenizer="colbert-ir/colbertv2.0",
+#     keep_retrieval_score=True
+# )
 
 # Pydantic models for request and response
 class ChatRequest(BaseModel):
@@ -77,7 +77,7 @@ class ChatResponse(BaseModel):
     conversation_id: str
     assistant_response: str
     chat_title: Optional[str] = None
-    tags_list: Optional[list] = None
+    # tags_list: Optional[list] = None
     questions_list: Optional[list] = None
 
 class ChatEngineRequest(BaseModel):
@@ -174,7 +174,7 @@ async def get_chat_engine(conversation_id: str, chat_profile: str) -> ContextCha
             retriever=fusion_retriever,
             memory=memory,
             system_prompt=template,
-            node_postprocessors=[colbert_reranker],
+            # node_postprocessors=[colbert_reranker],
         )
         timings['ContextChatEngine initialization'] = time.time() - chat_time
 
@@ -257,14 +257,17 @@ async def chat(request: ChatRequest):
         history = chat_engine.chat_history
         
         # Generate tags
-        tags_start = time.time()
-        tags_list, _ = get_tags(history, LLM)
-        timings['tags_generation'] = time.time() - tags_start
+        # tags_start = time.time()
+        # tags_list, _ = get_tags(history, LLM)
+        # timings['tags_generation'] = time.time() - tags_start
         
         # Generate question recommendations
-        questions_start = time.time()
-        questions_list, _ = question_recommendations(history, LLM)
-        timings['questions_generation'] = time.time() - questions_start
+        if len(history)%8 == 0:
+            questions_start = time.time()
+            questions_list, _ = question_recommendations(history, LLM)
+            timings['questions_generation'] = time.time() - questions_start
+        else:
+            questions_list = []
 
         # Print individual component times
         print("\n🕒 Component-wise Timing Breakdown:")
@@ -277,7 +280,7 @@ async def chat(request: ChatRequest):
             conversation_id=request.conversation_id,
             assistant_response=str(response),
             chat_title=title,
-            tags_list=tags_list,
+            # tags_list=tags_list,
             questions_list=questions_list
         )
 
