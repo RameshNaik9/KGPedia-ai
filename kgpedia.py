@@ -53,7 +53,7 @@ class KGPediaModel:
         )
         Settings.llm = Gemini(
             model_name=os.getenv("llm_model_name"),
-            temperature=1,
+            temperature=1.4,
             api_key=self.google_api_key
         )
 

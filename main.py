@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from llama_index.core.bridge.pydantic import BaseModel
 from llama_index.core.memory import ChatMemoryBuffer
 # from llama_index.postprocessor.colbert_rerank import ColbertRerank
-from typing import Optional, AsyncGenerator
+from typing import Optional
 
 #Custom functions
 from chat_engine import ContextChatEngine
@@ -23,7 +23,7 @@ import time
 import logging
 import nest_asyncio
 import asyncio
-from contextlib import asynccontextmanager
+# from contextlib import asynccontextmanager
 
 # Initialize tracing for memory usage
 tracemalloc.start()
@@ -197,100 +197,161 @@ async def get_chat_engine(conversation_id: str, chat_profile: str) -> ContextCha
 
     return chat_sessions[conversation_id]["engine"]
 
-@measure_time("Chat Processing Time")
-@app.post("/initialize_chat/{conversation_id}", response_model=ChatEngineConfirmationResponse)
-async def initialize_chat(request: ChatEngineRequest):
-    try:
-        engine_start = time.time()
-        chat_engine = await get_chat_engine(request.conversation_id, request.chat_profile)
+# @measure_time("Chat Processing Time")
+# @app.post("/initialize_chat/{conversation_id}", response_model=ChatEngineConfirmationResponse)
+# async def initialize_chat(request: ChatEngineRequest):
+#     try:
+#         engine_start = time.time()
+#         chat_engine = await get_chat_engine(request.conversation_id, request.chat_profile)
         
-        # Store chat engine in sessions
-        chat_sessions[request.conversation_id] = {
-            "engine": chat_engine,
-            "profile": request.chat_profile,
-            "title_generated":False
-        }
+#         # Store chat engine in sessions
+#         chat_sessions[request.conversation_id] = {
+#             "engine": chat_engine,
+#             "profile": request.chat_profile,
+#             "title_generated":False
+#         }
         
-        print(f"Chat engine initialized in {time.time() - engine_start:.2f} seconds")
+#         print(f"Chat engine initialized in {time.time() - engine_start:.2f} seconds")
         
-        return ChatEngineConfirmationResponse(
-            status="success",
-            message="Chat engine initialized successfully!",
-            conversation_id=request.conversation_id,
-            chat_profile=request.chat_profile
-        )
-    except Exception as e:
-        logger.error(f"Error initializing chat engine: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+#         return ChatEngineConfirmationResponse(
+#             status="success",
+#             message="Chat engine initialized successfully!",
+#             conversation_id=request.conversation_id,
+#             chat_profile=request.chat_profile
+#         )
+#     except Exception as e:
+#         logger.error(f"Error initializing chat engine: {e}")
+#         raise HTTPException(status_code=500, detail=str(e))
 
 # Chat endpoint
+# @measure_time("Chat Engine use chesi retrieval")
+# @app.post("/chat/{conversation_id}", response_model=ChatResponse)
+# async def chat(request: ChatRequest):
+#     if request.conversation_id not in chat_sessions:
+#         raise HTTPException(
+#             status_code=404,
+#             detail="No Chat Engine Found. Please Initialize chat first using the initialize_chat endpoint"
+#         )
+#     try:
+#         chat_engine = chat_sessions[request.conversation_id]["engine"]
+#         # Store component timings
+#         timings = {}
+#         #Get the existing chat engine for this conversation
+#         # engine_start = time.time()
+#         # chat_engine = await get_chat_engine(request.conversation_id, request.chat_profile)
+#         # timings['chat_engine_init'] = time.time() - engine_start
+#         # Generate response
+#         response_start = time.time()
+#         response = chat_engine.chat(request.user_message)
+#         timings['response_generation'] = time.time() - response_start
+        
+#         # Generate title if needed
+#         title_start = time.time()
+#         title = None
+#         if not chat_sessions[request.conversation_id]['title_generated']:
+#             title = get_chat_name(request.user_message, response)
+#             chat_sessions[request.conversation_id]['title_generated'] = True
+#         timings['title_generation'] = time.time() - title_start
+        
+#         # Get chat history
+#         history = chat_engine.chat_history
+        
+#         # Generate tags
+#         # tags_start = time.time()
+#         # tags_list, _ = get_tags(history, LLM)
+#         # timings['tags_generation'] = time.time() - tags_start
+        
+#         # Generate question recommendations
+#         if len(history)%8 == 0:
+#             questions_start = time.time()
+#             questions_list, _ = question_recommendations(history, LLM)
+#             timings['questions_generation'] = time.time() - questions_start
+#         else:
+#             questions_list = []
+
+#         # Print individual component times
+#         print("\n🕒 Component-wise Timing Breakdown:")
+#         print("----------------------------------------")
+#         for component, duration in timings.items():
+#             print(f"⏱️ {component:20}: {duration:.2f} seconds")
+#         print("----------------------------------------")
+        
+#         return ChatResponse(
+#             conversation_id=request.conversation_id,
+#             assistant_response=str(response),
+#             chat_title=title,
+#             # tags_list=tags_list,
+#             questions_list=questions_list
+#         )
+
+#     except Exception as e:
+#         logger.error(f"Error in chat endpoint: {e}")
+#         raise HTTPException(status_code=500, detail=str(e))
 @measure_time("Chat Engine use chesi retrieval")
 @app.post("/chat/{conversation_id}", response_model=ChatResponse)
 async def chat(request: ChatRequest):
-    if request.conversation_id not in chat_sessions:
-        raise HTTPException(
-            status_code=404,
-            detail="No Chat Engine Found. Please Initialize chat first using the initialize_chat endpoint"
-        )
     try:
-        chat_engine = chat_sessions[request.conversation_id]["engine"]
-        # Store component timings
+        
+        # Use await with get_chat_engine
+        chat_engine = await get_chat_engine(request.conversation_id, request.chat_profile)
+        
         timings = {}
-        #Get the existing chat engine for this conversation
-        # engine_start = time.time()
-        # chat_engine = await get_chat_engine(request.conversation_id, request.chat_profile)
-        # timings['chat_engine_init'] = time.time() - engine_start
-        # Generate response
+        # Use the async version of chat if available
         response_start = time.time()
         response = chat_engine.chat(request.user_message)
         timings['response_generation'] = time.time() - response_start
-        
-        # Generate title if needed
+
+        # Generate title only if it hasn't been generated yet
         title_start = time.time()
         title = None
         if not chat_sessions[request.conversation_id]['title_generated']:
             title = get_chat_name(request.user_message, response)
-            chat_sessions[request.conversation_id]['title_generated'] = True
+            # title = chat_title(user_message, response)
+            chat_sessions[request.conversation_id]['title_generated'] = True  # Set to True after generating title
         timings['title_generation'] = time.time() - title_start
         
-        # Get chat history
         history = chat_engine.chat_history
-        
-        # Generate tags
-        # tags_start = time.time()
-        # tags_list, _ = get_tags(history, LLM)
-        # timings['tags_generation'] = time.time() - tags_start
-        
-        # Generate question recommendations
-        if len(history)%8 == 0:
+        # tags_list, _ = get_tags(history,LLM)
+        # questions_list, _ = question_recommendations(history,LLM) 
+        if len(history)%8 == 0 or len(history)<=2:
             questions_start = time.time()
             questions_list, _ = question_recommendations(history, LLM)
             timings['questions_generation'] = time.time() - questions_start
         else:
             questions_list = []
-
-        # Print individual component times
+        # retrieved_nodes = KGPChatroomModel().get_retriever(chat_profile=chat_profile).retrieve(user_message)
+        # sources=[]
+        # information=[]
+        # for node in retrieved_nodes:
+        #     sources.append(node.metadata)
+        #     information.append(node.text)
+        # Create response object
+        
+        timings['total_time'] = sum(timings.values())
+        # print("Timing breakdown:", timings)
+        
         print("\n🕒 Component-wise Timing Breakdown:")
         print("----------------------------------------")
         for component, duration in timings.items():
             print(f"⏱️ {component:20}: {duration:.2f} seconds")
         print("----------------------------------------")
-        
-        return ChatResponse(
+        response_data = ChatResponse(
             conversation_id=request.conversation_id,
-            assistant_response=str(response),
-            chat_title=title,
-            # tags_list=tags_list,
-            questions_list=questions_list
+            assistant_response=str(response),  # Remove newline characters
+            chat_title=title,  # Return title only if it was generated
+            # tags_list = tags_list,
+            questions_list = questions_list,
+            # retrieved_sources=sources,
+            # retrieved_content = information
         )
+
+        return response_data
 
     except Exception as e:
         logger.error(f"Error in chat endpoint: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-
 # Delete specific chat endpoint
-@app.post("/chat_delete/{conversation_id}")
+@app.delete("/chat_delete/{conversation_id}")
 async def delete_chat(conversation_id: str):
     try:
         if conversation_id in chat_sessions:
@@ -321,6 +382,29 @@ def master_reset():
         logger.error(f"Unexpected error in master_reset endpoint: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/get_all_convo_ids")
+def get_all_convo_ids():
+    chat_sessions_list = list(chat_sessions.keys())
+    if len(chat_sessions_list) == 0:
+        raise HTTPException(status_code=404, detail="No active chat conversations found 😕")
+    return {"convo_ids": list(chat_sessions.keys())}
+
+@app.get("/get_conv_history/{conversation_id}")
+def get_conv_history(conversation_id: str):
+    try:
+        if conversation_id in chat_sessions:
+            chat_engine = chat_sessions[conversation_id]["engine"]
+            return {"conversation_id": conversation_id, "history": chat_engine.chat_history}
+        else:
+            raise KeyError
+    except KeyError:
+        logger.warning(f"Attempt to retrieve history for non-existing conversation ID: {conversation_id}")
+        raise HTTPException(
+            status_code=404, detail=f"Conversation ID {conversation_id} does not exist or has already been deleted 🗑️"
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in get_conv_history endpoint: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Middleware to add process time header
 @app.middleware("http")
