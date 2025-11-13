@@ -296,9 +296,9 @@ async def chat(request: ChatRequest):
         chat_engine = await get_chat_engine(request.conversation_id, request.chat_profile)
         
         timings = {}
-        # Use the async version of chat if available
+        # Use the async version of chat
         response_start = time.time()
-        response = chat_engine.chat(request.user_message)
+        response = await chat_engine.achat(request.user_message)
         timings['response_generation'] = time.time() - response_start
 
         # Generate title only if it hasn't been generated yet

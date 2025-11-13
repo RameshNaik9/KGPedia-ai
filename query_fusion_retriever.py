@@ -98,6 +98,23 @@ class QueryFusionRetriever(BaseRetriever):
     
         return [QueryBundle(q) for q in queries[: self.num_queries - 1]]
 
+    @measure_time("Query Generation (Async)")
+    async def _aget_queries(self, original_query: str) -> List[QueryBundle]:
+        prompt_str = self.query_gen_prompt.format(
+            num_queries=self.num_queries - 1,
+            query=original_query,
+        )
+        response = await self._llm.acomplete(prompt_str)
+
+        queries = response.text.split("\n")
+        queries = [q.strip() for q in queries if q.strip()]
+        if self._verbose:
+            queries_str = "\n".join(queries)
+            print(f"Generated queries:\n{queries_str}")
+
+    
+        return [QueryBundle(q) for q in queries[: self.num_queries - 1]]
+
     def _reciprocal_rerank_fusion(
         self, results: Dict[Tuple[str, int], List[NodeWithScore]]
     ) -> List[NodeWithScore]:
@@ -270,7 +287,7 @@ class QueryFusionRetriever(BaseRetriever):
     async def _aretrieve(self, query_bundle: QueryBundle) -> List[NodeWithScore]:
         queries: List[QueryBundle] = [query_bundle]
         if self.num_queries > 1:
-            queries.extend(self._get_queries(query_bundle.query_str))
+            queries.extend(await self._aget_queries(query_bundle.query_str))
 
         results = await self._run_async_queries(queries)
 
