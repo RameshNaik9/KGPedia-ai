@@ -51,8 +51,8 @@ app.add_middleware(
 template = Template.get_template()
 LLM = KGPediaModel().get_model()
 
-# Retrieve port from environment variables
-port = os.environ["PORT"]
+# Retrieve port from environment variables (default to 8000 if not set)
+port = os.environ.get("PORT", "8000")
 
 # Chat sessions storage
 chat_sessions = {}
