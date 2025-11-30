@@ -47,12 +47,18 @@ class KGPediaModel:
 
     def configure_models(self):
         """Configure the embedding and LLM models."""
+        embedding_model_name = os.getenv("embedding_model_name")
+        llm_model_name = os.getenv("llm_model_name")
+        
+        if not embedding_model_name or not llm_model_name:
+            raise ValueError("No model config??")
+        
         Settings.embed_model = GeminiEmbedding(
-            model_name=os.getenv("embedding_model_name"),
+            model_name=embedding_model_name,
             api_key=self.google_api_key
         )
         Settings.llm = Gemini(
-            model_name=os.getenv("llm_model_name"),
+            model_name=llm_model_name,
             temperature=1,
             api_key=self.google_api_key
         )

@@ -40,7 +40,7 @@ def get_prefix_messages_with_context(
     chat_history: List[ChatMessage],
     llm_metadata_system_role: MessageRole,
 ) -> List[ChatMessage]:
-    context_str_w_sys_prompt = context_template + system_prompt.strip()
+    context_str_w_sys_prompt = str(context_template) + system_prompt.strip()
     return [
         ChatMessage(content=context_str_w_sys_prompt, role=llm_metadata_system_role),
         *prefix_messages,
@@ -377,7 +377,7 @@ class ContextChatEngine(BaseChatEngine):
         await self._memory.aput(user_message)
         await self._memory.aput(ai_message)
 
-        return await AgentChatResponse(
+        return AgentChatResponse(
             response=str(response),
             sources=[
                 ToolOutput(

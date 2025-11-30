@@ -11,9 +11,9 @@ from template import Template
 from chat_title import get_chat_name
 from kgpedia import KGPediaModel
 from utils import measure_time
-# from tags import get_tags 
+from tags import get_tags 
 from question_recommendations import question_recommendations
-# from cache import NodeCache
+from cache import NodeCache
 
 import tracemalloc
 import os
@@ -77,18 +77,11 @@ class ChatResponse(BaseModel):
     conversation_id: str
     assistant_response: str
     chat_title: Optional[str] = None
-    # tags_list: Optional[list] = None
+    tags_list: Optional[list] = None
     questions_list: Optional[list] = None
-
-class ChatEngineRequest(BaseModel):
-    chat_profile: str
-    conversation_id: str
-    
-class ChatEngineConfirmationResponse(BaseModel):
-    status: str
-    message: str
-    conversation_id: str
-    chat_profile: str
+    time_taken: Optional[float] = None
+    retrieved_sources: list[dict]
+    retrieved_content: list[str]
 
 retrievers = {}
 
@@ -102,31 +95,6 @@ for profile in chat_profiles:
     elapsed_time = time.time() - start_time
     print(f"Fusion retriever for {profile} initialized in {elapsed_time:.2f} seconds.")
     
-# @asynccontextmanager
-# async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-#     """
-#     Lifespan event handler for FastAPI.
-#     Initializes resources on startup and cleans up on shutdown.
-#     """
-#     # Startup logic:
-#     print("Starting up...")
-
-#     # Initialize all retrievers
-#     tasks = []
-#     for profile in chat_profiles:
-#         task = asyncio.create_task(initialize_retriever(profile))
-#         tasks.append(task)
-#     await asyncio.gather(*tasks)
-#     print("All fusion retrievers initialized.")
-
-#     yield  # This is where your application runs
-
-#     # Shutdown logic:
-#     print("Shutting down...")
-#     # Perform any cleanup here if needed in the future
-#     chat_sessions.clear()
-#     retrievers.clear()
-    
 # Health check endpoint
 @app.get("/")
 def health_check():
@@ -134,23 +102,7 @@ def health_check():
         "message": "FastAPI Chat Assistant is running!",
         "cpu_percent": psutil.cpu_percent(),
         "memory_percent": psutil.virtual_memory().percent,
-    }
-
-# Helper function to get or create chat engine
-# async def get_chat_engine(conversation_id: str, chat_profile: str) -> ContextChatEngine:
-#     if conversation_id not in chat_sessions:
-#         memory = ChatMemoryBuffer.from_defaults(token_limit=40000)
-#         fusion_retriever = KGPediaModel().get_fusion_retriever(chat_profile=chat_profile)
-#         chat_engine = ContextChatEngine.from_defaults(
-#             retriever=fusion_retriever,
-#             memory=memory,
-#             system_prompt=template,
-#             node_postprocessors=[colbert_reranker],
-#         )
-#         chat_sessions[conversation_id] = {"engine": chat_engine, "title_generated": False}
-#     return chat_sessions[conversation_id]["engine"]
-# fusion_retriever = KGPediaModel().get_fusion_retriever(chat_profile="Career")
-    
+    }    
 
 async def get_chat_engine(conversation_id: str, chat_profile: str) -> ContextChatEngine:
     if conversation_id not in chat_sessions:
@@ -179,12 +131,12 @@ async def get_chat_engine(conversation_id: str, chat_profile: str) -> ContextCha
         timings['ContextChatEngine initialization'] = time.time() - chat_time
 
         # Measure node cache initialization time
-        # start_time = time.time()
-        # chat_engine._node_cache = NodeCache(
-        #     max_size=100,  # Cache up to 100 queries
-        #     ttl=3600      # Cache entries expire after 1 hour
-        # )
-        # timings['NodeCache initialization'] = time.time() - start_time
+        start_time = time.time()
+        chat_engine._node_cache = NodeCache(
+            max_size=100,  # Cache up to 100 queries
+            ttl=3600      # Cache entries expire after 1 hour
+        )
+        timings['NodeCache initialization'] = time.time() - start_time
 
         chat_sessions[conversation_id] = {"engine": chat_engine, "title_generated": False}
 
@@ -197,96 +149,6 @@ async def get_chat_engine(conversation_id: str, chat_profile: str) -> ContextCha
 
     return chat_sessions[conversation_id]["engine"]
 
-# @measure_time("Chat Processing Time")
-# @app.post("/initialize_chat/{conversation_id}", response_model=ChatEngineConfirmationResponse)
-# async def initialize_chat(request: ChatEngineRequest):
-#     try:
-#         engine_start = time.time()
-#         chat_engine = await get_chat_engine(request.conversation_id, request.chat_profile)
-        
-#         # Store chat engine in sessions
-#         chat_sessions[request.conversation_id] = {
-#             "engine": chat_engine,
-#             "profile": request.chat_profile,
-#             "title_generated":False
-#         }
-        
-#         print(f"Chat engine initialized in {time.time() - engine_start:.2f} seconds")
-        
-#         return ChatEngineConfirmationResponse(
-#             status="success",
-#             message="Chat engine initialized successfully!",
-#             conversation_id=request.conversation_id,
-#             chat_profile=request.chat_profile
-#         )
-#     except Exception as e:
-#         logger.error(f"Error initializing chat engine: {e}")
-#         raise HTTPException(status_code=500, detail=str(e))
-
-# Chat endpoint
-# @measure_time("Chat Engine use chesi retrieval")
-# @app.post("/chat/{conversation_id}", response_model=ChatResponse)
-# async def chat(request: ChatRequest):
-#     if request.conversation_id not in chat_sessions:
-#         raise HTTPException(
-#             status_code=404,
-#             detail="No Chat Engine Found. Please Initialize chat first using the initialize_chat endpoint"
-#         )
-#     try:
-#         chat_engine = chat_sessions[request.conversation_id]["engine"]
-#         # Store component timings
-#         timings = {}
-#         #Get the existing chat engine for this conversation
-#         # engine_start = time.time()
-#         # chat_engine = await get_chat_engine(request.conversation_id, request.chat_profile)
-#         # timings['chat_engine_init'] = time.time() - engine_start
-#         # Generate response
-#         response_start = time.time()
-#         response = chat_engine.chat(request.user_message)
-#         timings['response_generation'] = time.time() - response_start
-        
-#         # Generate title if needed
-#         title_start = time.time()
-#         title = None
-#         if not chat_sessions[request.conversation_id]['title_generated']:
-#             title = get_chat_name(request.user_message, response)
-#             chat_sessions[request.conversation_id]['title_generated'] = True
-#         timings['title_generation'] = time.time() - title_start
-        
-#         # Get chat history
-#         history = chat_engine.chat_history
-        
-#         # Generate tags
-#         # tags_start = time.time()
-#         # tags_list, _ = get_tags(history, LLM)
-#         # timings['tags_generation'] = time.time() - tags_start
-        
-#         # Generate question recommendations
-#         if len(history)%8 == 0:
-#             questions_start = time.time()
-#             questions_list, _ = question_recommendations(history, LLM)
-#             timings['questions_generation'] = time.time() - questions_start
-#         else:
-#             questions_list = []
-
-#         # Print individual component times
-#         print("\n🕒 Component-wise Timing Breakdown:")
-#         print("----------------------------------------")
-#         for component, duration in timings.items():
-#             print(f"⏱️ {component:20}: {duration:.2f} seconds")
-#         print("----------------------------------------")
-        
-#         return ChatResponse(
-#             conversation_id=request.conversation_id,
-#             assistant_response=str(response),
-#             chat_title=title,
-#             # tags_list=tags_list,
-#             questions_list=questions_list
-#         )
-
-#     except Exception as e:
-#         logger.error(f"Error in chat endpoint: {e}")
-#         raise HTTPException(status_code=500, detail=str(e))
 @measure_time("Chat Engine use chesi retrieval")
 @app.post("/chat/{conversation_id}", response_model=ChatResponse)
 async def chat(request: ChatRequest):
@@ -305,26 +167,28 @@ async def chat(request: ChatRequest):
         title_start = time.time()
         title = None
         if not chat_sessions[request.conversation_id]['title_generated']:
-            title = get_chat_name(request.user_message, response)
+            title = get_chat_name(request.user_message, str(response))
             # title = chat_title(user_message, response)
             chat_sessions[request.conversation_id]['title_generated'] = True  # Set to True after generating title
         timings['title_generation'] = time.time() - title_start
         
         history = chat_engine.chat_history
-        # tags_list, _ = get_tags(history,LLM)
-        # questions_list, _ = question_recommendations(history,LLM) 
-        if len(history)%8 == 0 or len(history)<=2:
+        tags_list = get_tags(history,LLM)[0]
+        questions_list = question_recommendations(history,LLM)[0]
+        if len(history)%8 == 0 or len(history)<=2: #added to save tokens instead of generating every time and diverting the main response generation
             questions_start = time.time()
             questions_list, _ = question_recommendations(history, LLM)
             timings['questions_generation'] = time.time() - questions_start
         else:
             questions_list = []
-        # retrieved_nodes = KGPChatroomModel().get_retriever(chat_profile=chat_profile).retrieve(user_message)
-        # sources=[]
-        # information=[]
-        # for node in retrieved_nodes:
-        #     sources.append(node.metadata)
-        #     information.append(node.text)
+            
+        # Use the source_nodes from the response (already retrieved during achat)
+        retrieved_nodes = response.source_nodes
+        sources = []
+        information = []
+        for node in retrieved_nodes:
+            sources.append(node.metadata)
+            information.append(node.text)
         # Create response object
         
         timings['total_time'] = sum(timings.values())
@@ -339,10 +203,11 @@ async def chat(request: ChatRequest):
             conversation_id=request.conversation_id,
             assistant_response=str(response),  # Remove newline characters
             chat_title=title,  # Return title only if it was generated
-            # tags_list = tags_list,
+            tags_list = tags_list,
             questions_list = questions_list,
-            # retrieved_sources=sources,
-            # retrieved_content = information
+            time_taken = timings['total_time'],
+            retrieved_sources=sources,
+            retrieved_content = information
         )
 
         return response_data
@@ -350,6 +215,7 @@ async def chat(request: ChatRequest):
     except Exception as e:
         logger.error(f"Error in chat endpoint: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    
 # Delete specific chat endpoint
 @app.delete("/chat_delete/{conversation_id}")
 async def delete_chat(conversation_id: str):
@@ -371,15 +237,26 @@ async def delete_chat(conversation_id: str):
 
 # Delete all chats endpoint
 @app.delete("/chats/delete_all")
-def master_reset():
+def delete_all_chats():
     try:
         if chat_sessions:
+            deleted_ids = list(chat_sessions.keys())
             chat_sessions.clear()
-            return {"message": "All chat conversations have been deleted successfully! 😈"}
+            logger.info(f"Deleted {len(deleted_ids)} conversation(s): {deleted_ids}")
+            return {
+                "message": "All chat conversations have been deleted successfully! 😈",
+                "deleted_count": len(deleted_ids),
+                "deleted_conversation_ids": deleted_ids
+            }
         else:
-            raise HTTPException(status_code=404, detail="No active chat conversations to delete 😕")
+            logger.info("No active chat conversations to delete")
+            return {
+                "message": "No active chat conversations found to delete 😕",
+                "deleted_count": 0,
+                "deleted_conversation_ids": []
+            }
     except Exception as e:
-        logger.error(f"Unexpected error in master_reset endpoint: {e}")
+        logger.error(f"Unexpected error in delete_all_chats endpoint: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/get_all_convo_ids")

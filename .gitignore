@@ -1,3 +1,5 @@
 .env
 kgpedia-venv
 __pycache__
+web_blog_scraping
+postman_testing.py
