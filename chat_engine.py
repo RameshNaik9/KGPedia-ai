@@ -19,8 +19,8 @@ from llama_index.core.chat_engine.types import (
     AgentChatResponse,
     BaseChatEngine,
     StreamingAgentChatResponse,
-    ToolOutput,
 )
+from llama_index.core.tools.types import ToolOutput
 from llama_index.core.llms.llm import LLM
 from llama_index.core.memory import BaseMemory, ChatMemoryBuffer
 from llama_index.core.postprocessor.types import BaseNodePostprocessor
@@ -175,7 +175,7 @@ class ContextChatEngine(BaseChatEngine):
 
         return nodes   
 
-    @measure_time("Getting response synthesizer")
+    # @measure_time("Getting response synthesizer")
     def _get_response_synthesizer(
         self, chat_history: List[ChatMessage], streaming: bool = False
     ) -> CompactAndRefine:
@@ -191,14 +191,14 @@ class ContextChatEngine(BaseChatEngine):
 
         # Get the messages for the QA and refine prompts
         qa_messages = get_prefix_messages_with_context(
-            self._context_template,
+            PromptTemplate(self._context_template),
             system_prompt,
             prefix_messages,
             chat_history,
             self._llm.metadata.system_role,
         )
         refine_messages = get_prefix_messages_with_context(
-            self._context_refine_template,
+            PromptTemplate(self._context_refine_template),
             system_prompt,
             prefix_messages,
             chat_history,
@@ -374,8 +374,20 @@ class ContextChatEngine(BaseChatEngine):
             role=MessageRole.ASSISTANT,
             additional_kwargs={"assistant_timestamp": assistant_timestamp}
         )
-        await self._memory.aput(user_message)
-        await self._memory.aput(ai_message)
+        # await self._memory.aput(user_message)
+        # await self._memory.aput(ai_message)
+        # Use sync put if aput is not available or not truly async
+        if hasattr(self._memory, 'aput'):
+            try:
+                await self._memory.aput(user_message)
+                await self._memory.aput(ai_message)
+            except TypeError:
+                # Fallback to sync if aput isn't actually async
+                self._memory.put(user_message)
+                self._memory.put(ai_message)
+        else:
+            self._memory.put(user_message)
+            self._memory.put(ai_message)
 
         return AgentChatResponse(
             response=str(response),
