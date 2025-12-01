@@ -18,7 +18,7 @@ from cache import NodeCache
 import tracemalloc
 import os
 import psutil
-# import uvicorn
+import uvicorn
 import time
 import logging
 import nest_asyncio
