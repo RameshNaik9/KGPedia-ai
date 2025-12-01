@@ -18,12 +18,11 @@ from cache import NodeCache
 import tracemalloc
 import os
 import psutil
-import uvicorn
+# import uvicorn
 import time
 import logging
 import nest_asyncio
-import asyncio
-# from contextlib import asynccontextmanager
+# import asyncio
 
 # Initialize tracing for memory usage
 tracemalloc.start()
@@ -109,11 +108,11 @@ async def get_chat_engine(conversation_id: str, chat_profile: str) -> ContextCha
         fusion_retriever = retrievers.get(chat_profile)
         if fusion_retriever is None:
             raise ValueError(f"No retriever found for chat profile: {chat_profile}")
-        timings={}
+        # timings={}
         # Measure memory initialization time
-        chatmemory_time = time.time()
+        # chatmemory_time = time.time()
         memory = ChatMemoryBuffer.from_defaults(token_limit=40000)
-        timings['ChatMemoryBuffer initialization'] = time.time() - chatmemory_time
+        # timings['ChatMemoryBuffer initialization'] = time.time() - chatmemory_time
 
         # Measure fusion retriever creation time
         # start_time = time.time()
@@ -121,31 +120,32 @@ async def get_chat_engine(conversation_id: str, chat_profile: str) -> ContextCha
         # timings['Fusion retriever creation'] = time.time() - start_time
 
         # Measure chat engine creation time
-        chat_time = time.time()
+        # chat_time = time.time()
         chat_engine = ContextChatEngine.from_defaults(
             retriever=fusion_retriever,
             memory=memory,
             system_prompt=template,
             # node_postprocessors=[colbert_reranker],
         )
-        timings['ContextChatEngine initialization'] = time.time() - chat_time
+        # timings['ContextChatEngine initialization'] = time.time() - chat_time
 
         # Measure node cache initialization time
-        start_time = time.time()
+        # start_time = time.time()
         chat_engine._node_cache = NodeCache(
             max_size=100,  # Cache up to 100 queries
             ttl=3600      # Cache entries expire after 1 hour
         )
-        timings['NodeCache initialization'] = time.time() - start_time
+        # timings['NodeCache initialization'] = time.time() - start_time
 
         chat_sessions[conversation_id] = {"engine": chat_engine, "title_generated": False}
 
-        # Print timing breakdown
-        print("\n🕒 Chat Engine Initialization Timing Breakdown:")
-        print("----------------------------------------")
-        for component, duration in timings.items():
-            print(f"⏱️ {component:40}: {duration:.2f} seconds")
-        print("----------------------------------------")
+        # # Print timing breakdown
+        # print("\n🕒 Chat Engine Initialization Timing Breakdown:")
+        # print("----------------------------------------")
+        # for component, duration in timings.items():
+        #     print(f"⏱️ {component:40}: {duration:.2f} seconds")
+        # print("----------------------------------------")
+        print(f"Chat session {conversation_id} initialized with profile {chat_profile}.")
 
     return chat_sessions[conversation_id]["engine"]
 
@@ -294,5 +294,5 @@ async def add_process_time_header(request: Request, call_next):
 
 
 # Run the app
-if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=int(port), reload=False,factory=True)
+# if __name__ == "__main__":
+#     uvicorn.run("main:app", host="0.0.0.0", port=int(port), reload=False,factory=True)
