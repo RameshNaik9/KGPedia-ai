@@ -3,3 +3,6 @@ kgpedia-venv
 __pycache__
 web_blog_scraping
 postman_testing.py
+cleaned_markdown_transribes
+upsert.py
+clean_pycache.py

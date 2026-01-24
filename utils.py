@@ -1,8 +1,6 @@
-# FILE: utils.py
 import time
 import asyncio
 from functools import wraps
-import logging
 
 def measure_time(description):
     def decorator(func):
