@@ -76,11 +76,12 @@ class ChatResponse(BaseModel):
     conversation_id: str
     assistant_response: str
     chat_title: Optional[str] = None
-    tags_list: Optional[list] = None
+    # tags_list: Optional[list] = None
     questions_list: Optional[list] = None
     time_taken: Optional[float] = None
     retrieved_sources: list[dict]
     retrieved_content: list[str]
+    token_counts: Optional[dict] = None
 
 retrievers = {}
 
@@ -158,29 +159,67 @@ async def chat(request: ChatRequest):
         chat_engine = await get_chat_engine(request.conversation_id, request.chat_profile)
         
         timings = {}
+        rag_timings = {}
+        token_counts = {
+            "response_generation": {"input_tokens": 0, "output_tokens": 0},
+            "title_generation": {"input_tokens": 0, "output_tokens": 0},
+            # "tags_generation": {"input_tokens": 0, "output_tokens": 0},
+            "questions_generation": {"input_tokens": 0, "output_tokens": 0},
+            "total": {"input_tokens": 0, "output_tokens": 0}
+        }
+        
         # Use the async version of chat
         response_start = time.time()
         response = await chat_engine.achat(request.user_message)
-        timings['response_generation'] = time.time() - response_start
+        timings['total_response_generation'] = time.time() - response_start
+
+        # Extract token usage from the callback handler (captures all LLM calls during synthesis)
+        if hasattr(response, 'token_usage') and response.token_usage:
+            usage = response.token_usage
+            token_counts["response_generation"]["input_tokens"] = usage.get('prompt_tokens', 0)
+            token_counts["response_generation"]["output_tokens"] = usage.get('completion_tokens', 0)
+        
+        # Extract detailed RAG timings if available
+        if hasattr(response, 'rag_timings'):
+            rag_timings = response.rag_timings
 
         # Generate title only if it hasn't been generated yet
         title_start = time.time()
         title = None
         if not chat_sessions[request.conversation_id]['title_generated']:
-            title = get_chat_name(request.user_message, str(response))
+            title, chat_title_input_tokens, chat_title_output_tokens = get_chat_name(request.user_message, str(response))
+            token_counts["title_generation"]["input_tokens"] = chat_title_input_tokens
+            token_counts["title_generation"]["output_tokens"] = chat_title_output_tokens
             # title = chat_title(user_message, response)
             chat_sessions[request.conversation_id]['title_generated'] = True  # Set to True after generating title
         timings['title_generation'] = time.time() - title_start
         
         history = chat_engine.chat_history
-        tags_list = get_tags(history,LLM)[0]
-        questions_list = question_recommendations(history,LLM)[0]
+        
+        # tags_start = time.time()
+        # tags_list, _, tags_input_tokens, tags_output_tokens  = get_tags(history, LLM)
+        # token_counts["tags_generation"]["input_tokens"] = tags_input_tokens
+        # token_counts["tags_generation"]["output_tokens"] = tags_output_tokens
+        # timings['tags_generation'] = time.time() - tags_start
+        # changed by Abhirama, tags generation can be modified into a CRON job later
+
         if len(history)%8 == 0 or len(history)<=2: #added to save tokens instead of generating every time and diverting the main response generation
             questions_start = time.time()
-            questions_list, _ = question_recommendations(history, LLM)
+            # questions_list, _, questions_input_tokens, questions_output_tokens = question_recommendations(history, LLM, tags=tags_list) 
+            questions_list, _, questions_input_tokens, questions_output_tokens = question_recommendations(history, LLM)
+            token_counts["questions_generation"]["input_tokens"] = questions_input_tokens
+            token_counts["questions_generation"]["output_tokens"] = questions_output_tokens
             timings['questions_generation'] = time.time() - questions_start
         else:
             questions_list = []
+            
+        #Calculate the total tokens
+        token_counts["total"]["input_tokens"] = sum(
+            stage["input_tokens"] for stage in token_counts.values() if isinstance(stage, dict) and "input_tokens" in stage
+        )
+        token_counts["total"]["output_tokens"] = sum(
+            stage["output_tokens"] for stage in token_counts.values() if isinstance(stage, dict) and "output_tokens" in stage
+        )
             
         # Use the source_nodes from the response (already retrieved during achat)
         retrieved_nodes = response.source_nodes
@@ -192,18 +231,60 @@ async def chat(request: ChatRequest):
         # Create response object
         
         timings['total_time'] = sum(timings.values())
-        # print("Timing breakdown:", timings)
         
-        print("\n🕒 Component-wise Timing Breakdown:")
-        print("----------------------------------------")
-        for component, duration in timings.items():
-            print(f"⏱️ {component:20}: {duration:.2f} seconds")
-        print("----------------------------------------")
+        # Print detailed timing breakdown
+        print("\n" + "="*50)
+        print("🕒 DETAILED TIMING BREAKDOWN")
+        print("="*50)
+        
+        # RAG Pipeline breakdown
+        if rag_timings:
+            print("\n📚 RAG PIPELINE:")
+            print("-"*40)
+            rag_components = [
+                ('query_generation', '🔍 Query Generation (LLM)'),
+                ('multi_retriever_execution', '🗄️  Multi-Retriever Execution'),
+                ('fusion_ranking', '🔀 Fusion Ranking'),
+                ('postprocessing', '⚙️  Post-processing'),
+                ('total_retrieval', '📊 Total Retrieval'),
+                ('synthesizer_setup', '🛠️  Synthesizer Setup'),
+                ('llm_synthesis', '🤖 LLM Response Synthesis'),
+            ]
+            for key, label in rag_components:
+                if key in rag_timings:
+                    print(f"  {label:35}: {rag_timings[key]:.5f}s")
+        
+        # Other components breakdown
+        print("\n🎯 OTHER COMPONENTS:")
+        print("-"*40)
+        other_components = [
+            ('total_response_generation', '📦 Total Response Generation'),
+            ('title_generation', '📝 Title Generation'),
+            # ('tags_generation', '🏷️  Tags Generation'), #changed by Abhirama, tags removed currently
+            ('questions_generation', '❓ Questions Generation'),
+        ]
+        for key, label in other_components:
+            if key in timings:
+                print(f"  {label:35}: {timings[key]:.5f}s")
+        
+        print("\n" + "-"*40)
+        print(f"⏱️  TOTAL TIME: {timings['total_time']:.5f} seconds")
+        
+        # Print token usage breakdown
+        print("\n" + "="*50)
+        print("🎫 TOKEN USAGE BREAKDOWN")
+        print("="*50)
+        for stage, counts in token_counts.items():
+            if isinstance(counts, dict) and stage != "total":
+                print(f"  {stage:30}: Input={counts['input_tokens']:5}, Output={counts['output_tokens']:5}")
+        print("-"*40)
+        print(f"  {'TOTAL':30}: Input={token_counts['total']['input_tokens']:5}, Output={token_counts['total']['output_tokens']:5}")        
+        print("="*50 + "\n")
         response_data = ChatResponse(
             conversation_id=request.conversation_id,
             assistant_response=str(response),  # Remove newline characters
             chat_title=title,  # Return title only if it was generated
-            tags_list = tags_list,
+            # tags_list = tags_list, #changed by Abhirama, tags removed currently
             questions_list = questions_list,
             time_taken = timings['total_time'],
             retrieved_sources=sources,

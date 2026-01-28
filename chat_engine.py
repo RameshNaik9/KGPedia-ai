@@ -30,8 +30,9 @@ from llama_index.core.settings import Settings
 from llama_index.core.chat_engine.utils import get_response_synthesizer
 from llama_index.core.prompts import PromptTemplate
 
-from utils import measure_time
+from utils import measure_time, retry_with_backoff
 from cache import NodeCache
+from token_tracking import TokenUsageHandler
 
 def get_prefix_messages_with_context(
     context_template: PromptTemplate,
@@ -96,6 +97,11 @@ class ContextChatEngine(BaseChatEngine):
         )
 
         self.callback_manager = callback_manager or CallbackManager([])
+        
+        # Add token usage handler for tracking LLM token consumption
+        self._token_usage_handler = TokenUsageHandler()
+        self.callback_manager.add_handler(self._token_usage_handler)
+        
         for node_postprocessor in self._node_postprocessors:
             node_postprocessor.callback_manager = self.callback_manager
         self._node_cache = NodeCache()
@@ -145,6 +151,7 @@ class ContextChatEngine(BaseChatEngine):
             context_refine_template=context_refine_template,
         )
 
+    @retry_with_backoff(retries=1)
     @measure_time("Getting nodes from retriever")
     def _get_nodes(self, message: str) -> List[NodeWithScore]:
         """Generate context information from a message."""
@@ -164,16 +171,29 @@ class ContextChatEngine(BaseChatEngine):
         # Store in cache
         self._node_cache.put(message, nodes)
         return nodes
-
-    async def _aget_nodes(self, message: str) -> List[NodeWithScore]:
-        """Generate context information from a message."""
+    @retry_with_backoff(retries=1)
+    async def _aget_nodes(self, message: str) -> tuple[List[NodeWithScore], dict]:
+        """Generate context information from a message. Returns nodes and timing info."""
+        import time
+        timings = {}
+        
+        retrieval_start = time.time()
         nodes = await self._retriever.aretrieve(message)
+        timings['total_retrieval'] = time.time() - retrieval_start
+        
+        # Capture detailed RAG timings from retriever if available
+        if hasattr(self._retriever, '_last_rag_timings'):
+            timings.update(self._retriever._last_rag_timings) #type:ignore
+        
+        postprocess_start = time.time()
         for postprocessor in self._node_postprocessors:
             nodes = postprocessor.postprocess_nodes(
                 nodes, query_bundle=QueryBundle(message)
             )
+        if self._node_postprocessors:
+            timings['postprocessing'] = time.time() - postprocess_start
 
-        return nodes   
+        return nodes, timings   
 
     # @measure_time("Getting response synthesizer")
     def _get_response_synthesizer(
@@ -345,11 +365,18 @@ class ContextChatEngine(BaseChatEngine):
         chat_history: Optional[List[ChatMessage]] = None,
         prev_chunks: Optional[List[NodeWithScore]] = None,
     ) -> AgentChatResponse:
+        rag_timings = {}
+        
+        # Reset token usage handler at the start of each chat
+        self._token_usage_handler.reset()
+        
         if chat_history is not None:
             self._memory.set(chat_history)
 
-        # get nodes and postprocess them
-        nodes = await self._aget_nodes(message)
+        # get nodes and postprocess them (with timing)
+        nodes, retrieval_timings = await self._aget_nodes(message)
+        rag_timings.update(retrieval_timings)
+        
         user_timestamp = int(time.time())
         if len(nodes) == 0 and prev_chunks is not None:
             nodes = prev_chunks
@@ -358,9 +385,14 @@ class ContextChatEngine(BaseChatEngine):
         chat_history = self._memory.get(
             input=message,
         )
+        synthesizer_start = time.time()
         synthesizer = self._get_response_synthesizer(chat_history)
+        rag_timings['synthesizer_setup'] = time.time() - synthesizer_start
 
+        llm_start = time.time()
         response = await synthesizer.asynthesize(message, nodes)
+        rag_timings['llm_synthesis'] = time.time() - llm_start
+        
         assistant_timestamp = int(time.time())
         
         user_message = ChatMessage(
@@ -389,7 +421,7 @@ class ContextChatEngine(BaseChatEngine):
             self._memory.put(user_message)
             self._memory.put(ai_message)
 
-        return AgentChatResponse(
+        agent_response = AgentChatResponse(
             response=str(response),
             sources=[
                 ToolOutput(
@@ -401,6 +433,14 @@ class ContextChatEngine(BaseChatEngine):
             ],
             source_nodes=nodes,
         )
+        # Attach RAG timings to response for access in main.py
+        agent_response.rag_timings = rag_timings #type:ignore
+        
+        # Attach token usage from the callback handler
+        # This captures actual usage from LLM calls during synthesis
+        agent_response.token_usage = self._token_usage_handler.get_usage_summary() #type:ignore
+
+        return agent_response
 
     @trace_method("chat")
     async def astream_chat(
@@ -414,7 +454,7 @@ class ContextChatEngine(BaseChatEngine):
             
         user_timestamp = int(time.time())
         # get nodes and postprocess them
-        nodes = await self._aget_nodes(message)
+        nodes, _ = await self._aget_nodes(message)
         if len(nodes) == 0 and prev_chunks is not None:
             nodes = prev_chunks
 
