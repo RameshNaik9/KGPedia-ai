@@ -6,3 +6,6 @@ postman_testing.py
 cleaned_markdown_transribes
 upsert.py
 clean_pycache.py
+vector_index_llama_index.ipynb
+scraping
+data/markdown_transcribes

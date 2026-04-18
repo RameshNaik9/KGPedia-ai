@@ -12,7 +12,7 @@ from llama_index.core.retrievers import BaseRetriever
 from llama_index.core.schema import IndexNode, NodeWithScore, QueryBundle
 from llama_index.core.settings import Settings
 
-from utils import measure_time
+from app.utils import measure_time
 
 QUERY_GEN_PROMPT = (
     "You are a helpful assistant for campus placements at IIT Kharagpur that generates multiple search queries based on a "

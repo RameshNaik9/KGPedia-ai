@@ -1,4 +1,4 @@
-from kgpedia import KGPediaModel
+from app.core.kgpedia import KGPediaModel
 
 def get_chat_name(user_message: str, assistant_response: str) -> tuple[str, int, int]:
     llm= KGPediaModel().get_model()

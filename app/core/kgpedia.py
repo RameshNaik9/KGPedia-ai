@@ -13,10 +13,10 @@ from pinecone import Pinecone
 from llama_index.retrievers.bm25 import BM25Retriever
 # from llama_index.core.retrievers.fusion_retriever import FUSION_MODES
 # from llama_index.core.retrievers import QueryFusionRetriever
-from query_fusion_retriever import QueryFusionRetriever, FUSION_MODES
+from app.engine.query_fusion_retriever import QueryFusionRetriever, FUSION_MODES
 import Stemmer
 
-from utils import measure_time
+from app.utils import measure_time
 
 load_dotenv()
 
@@ -39,7 +39,7 @@ class KGPediaModel:
             KGPediaModel._pinecone_client = Pinecone(api_key=self.pinecone_api_key)
         self.pc = KGPediaModel._pinecone_client
         
-        self.base_persist_dir = "pinecone index"
+        self.base_persist_dir = "data/pinecone_index/"
         
         # Map from chat_profile to host_url
         self.chat_profile_url_map = {

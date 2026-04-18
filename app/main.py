@@ -1,19 +1,18 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from llama_index.core.bridge.pydantic import BaseModel
 from llama_index.core.memory import ChatMemoryBuffer
 # from llama_index.postprocessor.colbert_rerank import ColbertRerank
-from typing import Optional
 
 #Custom functions
-from chat_engine import ContextChatEngine
-from template import Template
-from chat_title import get_chat_name
-from kgpedia import KGPediaModel
-from utils import measure_time
-from tags import get_tags 
-from question_recommendations import question_recommendations
-from cache import NodeCache
+from app.engine.chat_engine import ContextChatEngine
+from app.core.template import Template
+from app.services.chat_title import get_chat_name
+from app.core.kgpedia import KGPediaModel
+from app.utils import measure_time
+from app.services.tags import get_tags 
+from app.services.question_recommendations import question_recommendations
+from app.engine.cache import NodeCache
+from app.schemas import ChatRequest, ChatResponse
 
 import tracemalloc
 import os
@@ -64,24 +63,6 @@ chat_profiles = ['Career']
 #     tokenizer="colbert-ir/colbertv2.0",
 #     keep_retrieval_score=True
 # )
-
-# Pydantic models for request and response
-class ChatRequest(BaseModel):
-    conversation_id: str
-    user_message: str
-    chat_profile: str
-
-
-class ChatResponse(BaseModel):
-    conversation_id: str
-    assistant_response: str
-    chat_title: Optional[str] = None
-    # tags_list: Optional[list] = None
-    questions_list: Optional[list] = None
-    time_taken: Optional[float] = None
-    retrieved_sources: list[dict]
-    retrieved_content: list[str]
-    token_counts: Optional[dict] = None
 
 retrievers = {}
 
