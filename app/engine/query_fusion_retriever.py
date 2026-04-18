@@ -12,7 +12,7 @@ from llama_index.core.retrievers import BaseRetriever
 from llama_index.core.schema import IndexNode, NodeWithScore, QueryBundle
 from llama_index.core.settings import Settings
 
-from utils import measure_time
+from app.utils import measure_time
 
 QUERY_GEN_PROMPT = (
     "You are a helpful assistant for campus placements at IIT Kharagpur that generates multiple search queries based on a "
@@ -285,21 +285,34 @@ class QueryFusionRetriever(BaseRetriever):
             raise ValueError(f"Invalid fusion mode: {self.mode}")
 
     async def _aretrieve(self, query_bundle: QueryBundle) -> List[NodeWithScore]:
+        import time
+        rag_timings = {}
+        
         queries: List[QueryBundle] = [query_bundle]
         if self.num_queries > 1:
+            query_gen_start = time.time()
             queries.extend(await self._aget_queries(query_bundle.query_str))
+            rag_timings['query_generation'] = time.time() - query_gen_start
 
+        retrieval_start = time.time()
         results = await self._run_async_queries(queries)
+        rag_timings['multi_retriever_execution'] = time.time() - retrieval_start
 
+        fusion_start = time.time()
         if self.mode == FUSION_MODES.RECIPROCAL_RANK:
-            return self._reciprocal_rerank_fusion(results)[: self.similarity_top_k]
+            fused_results = self._reciprocal_rerank_fusion(results)[: self.similarity_top_k]
         elif self.mode == FUSION_MODES.RELATIVE_SCORE:
-            return self._relative_score_fusion(results)[: self.similarity_top_k]
+            fused_results = self._relative_score_fusion(results)[: self.similarity_top_k]
         elif self.mode == FUSION_MODES.DIST_BASED_SCORE:
-            return self._relative_score_fusion(results, dist_based=True)[
+            fused_results = self._relative_score_fusion(results, dist_based=True)[
                 : self.similarity_top_k
             ]
         elif self.mode == FUSION_MODES.SIMPLE:
-            return self._simple_fusion(results)[: self.similarity_top_k]
+            fused_results = self._simple_fusion(results)[: self.similarity_top_k]
         else:
             raise ValueError(f"Invalid fusion mode: {self.mode}")
+        rag_timings['fusion_ranking'] = time.time() - fusion_start
+        
+        # Store timings as an attribute for access by the chat engine
+        self._last_rag_timings = rag_timings
+        return fused_results
